@@ -14,7 +14,7 @@
 	<artifactId>mock-vendors</artifactId>
 	<version>0.0.1-SNAPSHOT</version>
 	<name>mock-vendors</name>
-	<description>Simulated PAN and bureau vendors with chaos controls. All vendors are mocks.</description>
+	<description>Mock primary and secondary vendors with a chaos endpoint for latency and errors.</description>
 
 	<properties>
 		<java.version>17</java.version>

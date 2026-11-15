@@ -1,53 +1,52 @@
 package com.triage.gateway.api;
 
-import com.triage.gateway.vendor.VendorCallException;
-import com.triage.gateway.verification.UnsupportedVerificationException;
+import com.triage.gateway.error.GatewayException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-	@ExceptionHandler(MethodArgumentNotValidException.class)
-	ResponseEntity<ApiError> handleValidation(MethodArgumentNotValidException e) {
-		String message = e.getBindingResult().getFieldErrors().stream()
-				.map(error -> error.getField() + " " + error.getDefaultMessage())
-				.findFirst()
-				.orElse("request is invalid");
-		return error(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", message);
+	private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+
+	@ExceptionHandler(GatewayException.class)
+	public ResponseEntity<ErrorResponse> gateway(GatewayException e) {
+		return ResponseEntity.status(e.status()).body(new ErrorResponse(e.code(), e.getMessage()));
 	}
 
-	@ExceptionHandler(MissingRequestHeaderException.class)
-	ResponseEntity<ApiError> handleMissingHeader(MissingRequestHeaderException e) {
-		return error(HttpStatus.BAD_REQUEST, "MISSING_HEADER", e.getHeaderName() + " header is required");
+	@ExceptionHandler({MissingRequestHeaderException.class, HttpMessageNotReadableException.class,
+			IllegalArgumentException.class})
+	public ResponseEntity<ErrorResponse> badRequest(Exception e) {
+		return error(HttpStatus.BAD_REQUEST, "BAD_REQUEST", e.getMessage());
 	}
 
-	@ExceptionHandler(HttpMessageNotReadableException.class)
-	ResponseEntity<ApiError> handleUnreadable(HttpMessageNotReadableException e) {
-		return error(HttpStatus.BAD_REQUEST, "MALFORMED_BODY", "request body is not valid JSON");
+	@ExceptionHandler(NoResourceFoundException.class)
+	public ResponseEntity<ErrorResponse> notFound(NoResourceFoundException e) {
+		return error(HttpStatus.NOT_FOUND, "NOT_FOUND", "no such endpoint");
 	}
 
-	@ExceptionHandler(InvalidRequestException.class)
-	ResponseEntity<ApiError> handleInvalid(InvalidRequestException e) {
-		return error(HttpStatus.BAD_REQUEST, "INVALID_REQUEST", e.getMessage());
+	@ExceptionHandler(DataAccessException.class)
+	public ResponseEntity<ErrorResponse> store(DataAccessException e) {
+		log.error("idempotency store unavailable", e);
+		return error(HttpStatus.SERVICE_UNAVAILABLE, "STORE_UNAVAILABLE", "idempotency store unavailable");
 	}
 
-	@ExceptionHandler(UnsupportedVerificationException.class)
-	ResponseEntity<ApiError> handleUnsupported(UnsupportedVerificationException e) {
-		return error(HttpStatus.NOT_IMPLEMENTED, "NOT_IMPLEMENTED", e.getMessage());
+	@ExceptionHandler(Exception.class)
+	public ResponseEntity<ErrorResponse> unexpected(Exception e) {
+		log.error("unexpected error", e);
+		return error(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "unexpected error");
 	}
 
-	@ExceptionHandler(VendorCallException.class)
-	ResponseEntity<ApiError> handleVendorFailure(VendorCallException e) {
-		return error(HttpStatus.BAD_GATEWAY, "VENDOR_FAILURE", e.getMessage());
+	private static ResponseEntity<ErrorResponse> error(HttpStatus status, String code, String message) {
+		return ResponseEntity.status(status).body(new ErrorResponse(code, message));
 	}
 
-	private static ResponseEntity<ApiError> error(HttpStatus status, String code, String message) {
-		return ResponseEntity.status(status).body(new ApiError(code, message));
-	}
 }

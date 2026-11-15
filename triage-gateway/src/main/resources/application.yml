@@ -1,0 +1,75 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: triage-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+triage:
+  vendors:
+    primary:
+      url: ${PRIMARY_URL:http://localhost:8081/mock/vendor-a/verify}
+    secondary:
+      url: ${SECONDARY_URL:http://localhost:8081/mock/vendor-b/verify}
+  idempotency:
+    ttl: 24h
+    in-progress-ttl: 60s
+
+# Same settings for both vendors. Instance names must match @Retry/@CircuitBreaker/@TimeLimiter names.
+resilience4j:
+  timelimiter:
+    instances:
+      primary:
+        timeout-duration: 2s
+      secondary:
+        timeout-duration: 2s
+  retry:
+    instances:
+      primary:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - java.util.concurrent.TimeoutException
+          - com.triage.gateway.error.VendorUnavailableException
+      secondary:
+        max-attempts: 3
+        wait-duration: 200ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+        enable-randomized-wait: true
+        randomized-wait-factor: 0.5
+        retry-exceptions:
+          - java.util.concurrent.TimeoutException
+          - com.triage.gateway.error.VendorUnavailableException
+  circuitbreaker:
+    instances:
+      primary:
+        failure-rate-threshold: 50
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        ignore-exceptions:
+          - com.triage.gateway.error.VendorRejectedException
+      secondary:
+        failure-rate-threshold: 50
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 2
+        ignore-exceptions:
+          - com.triage.gateway.error.VendorRejectedException
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,circuitbreakers
